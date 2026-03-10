@@ -1069,6 +1069,107 @@ function findSR(candles, lookback=50){
   return { resistance, support, recentHigh, recentLow };
 }
 
+// Find next S/R levels above/below price — for logical TPs
+function findNextSRLevels(candles1h, candles4h, price, isBuy, dec){
+  // Collect pivot highs/lows from 1H and 4H
+  const pivots = [];
+
+  const collectPivots = (candles, label) => {
+    const c = candles.slice(-80);
+    for(let i=2; i<c.length-2; i++){
+      const isSwingHigh = c[i].h > c[i-1].h && c[i].h > c[i-2].h && c[i].h > c[i+1].h && c[i].h > c[i+2].h;
+      const isSwingLow  = c[i].l < c[i-1].l && c[i].l < c[i-2].l && c[i].l < c[i+1].l && c[i].l < c[i+2].l;
+      if(isSwingHigh) pivots.push({ level: c[i].h, type: 'resistance', src: label });
+      if(isSwingLow)  pivots.push({ level: c[i].l, type: 'support',    src: label });
+    }
+  };
+
+  collectPivots(candles1h, '1H');
+  collectPivots(candles4h, '4H');
+
+  // Filter levels above/below price + deduplicate (merge levels within 0.1%)
+  const minDist = price * 0.0005; // min 0.05% away from price
+  const relevant = pivots
+    .filter(p => isBuy ? p.level > price + minDist : p.level < price - minDist)
+    .sort((a,b) => isBuy ? a.level - b.level : b.level - a.level);
+
+  // Deduplicate
+  const deduped = [];
+  for(const p of relevant){
+    const last = deduped[deduped.length-1];
+    if(!last || Math.abs(p.level - last.level) / price > 0.001){
+      deduped.push(p);
+    }
+  }
+
+  return deduped.slice(0, 5); // top 5 next levels
+}
+
+// Calculate logical SL/TP based on structure
+function calcStructuredSLTP(candles1h, candles15m, candles4h, price, isBuy, dec){
+  const pip = dec === 2 ? 0.10 : dec === 3 ? 0.01 : 0.0001;
+  const minSL = pip * (dec === 2 ? 80 : dec === 3 ? 8 : 8); // min SL distance
+
+  // SL = nearest swing high/low on 15m
+  const c15 = candles15m.slice(-20);
+  const swingH15 = c15.length ? Math.max(...c15.map(x=>x.h)) : price;
+  const swingL15 = c15.length ? Math.min(...c15.map(x=>x.l)) : price;
+
+  let sl = isBuy
+    ? Math.min(swingL15 - pip*2, price - minSL)  // below 15m swing low
+    : Math.max(swingH15 + pip*2, price + minSL);  // above 15m swing high
+
+  const slDist = Math.abs(price - sl);
+
+  // Next S/R levels for TPs
+  const nextLevels = findNextSRLevels(candles1h, candles4h, price, isBuy, dec);
+
+  // TP1 = first S/R level with RR >= 1.5 (prefer 1.8-2.5)
+  let tp1 = null, tp1RR = 0;
+  for(const lvl of nextLevels){
+    const rr = Math.abs(lvl.level - price) / slDist;
+    if(rr >= 1.5 && rr <= 3.5){
+      tp1 = lvl.level;
+      tp1RR = rr;
+      break;
+    }
+  }
+  // Fallback: math 1:2 if no S/R found
+  if(!tp1){ tp1 = isBuy ? price + slDist*2 : price - slDist*2; tp1RR = 2; }
+
+  // TP2 = next S/R level after TP1 (RR 2.5-4)
+  let tp2 = null;
+  for(const lvl of nextLevels){
+    const rr = Math.abs(lvl.level - price) / slDist;
+    if(rr > tp1RR + 0.3 && rr <= 5){
+      tp2 = lvl.level;
+      break;
+    }
+  }
+  if(!tp2) tp2 = isBuy ? price + slDist*3 : price - slDist*3;
+
+  // TP3 = major S/R or RR 4
+  let tp3 = null;
+  for(const lvl of nextLevels){
+    const rr = Math.abs(lvl.level - price) / slDist;
+    if(rr > (tp2 ? Math.abs(tp2-price)/slDist + 0.3 : 3) && rr <= 6){
+      tp3 = lvl.level;
+      break;
+    }
+  }
+  if(!tp3) tp3 = isBuy ? price + slDist*4 : price - slDist*4;
+
+  return {
+    sl:  parseFloat(sl.toFixed(dec)),
+    tp1: parseFloat(tp1.toFixed(dec)),
+    tp2: parseFloat(tp2.toFixed(dec)),
+    tp3: parseFloat(tp3.toFixed(dec)),
+    slDist: parseFloat(slDist.toFixed(dec+1)),
+    tp1RR:  parseFloat(tp1RR.toFixed(2)),
+    nextLevels: nextLevels.slice(0,3).map(l=>l.level.toFixed(dec))
+  };
+}
+
 function getSwingStructure(candles){
   // Detect Higher Highs/Lower Lows for trend structure
   const c=candles.slice(-20);
@@ -1165,6 +1266,33 @@ function computeTechnicals(key){
   const nearSupport    = posInRange < 0.15 || Math.abs(price-sr1h.recentLow)/price < 0.002;
   const nearResistance = posInRange > 0.85 || Math.abs(price-sr1h.recentHigh)/price < 0.002;
 
+  // ── Liquidity Zones ──
+  // Previous Day High/Low
+  const dailyCandles = h4.slice(-10); // derniers daily candles
+  const prevDayHigh = dailyCandles.length >= 2 ? Math.max(...dailyCandles.slice(-2).map(x=>x.h)) : null;
+  const prevDayLow  = dailyCandles.length >= 2 ? Math.min(...dailyCandles.slice(-2).map(x=>x.l)) : null;
+
+  // Equal Highs/Lows (liquidity pools) — 4H
+  const last10_4h = h4.slice(-10);
+  const highs4h   = last10_4h.map(x=>x.h);
+  const lows4h    = last10_4h.map(x=>x.l);
+  const eqHigh    = highs4h.length >= 3 ? highs4h.filter(h => Math.abs(h - Math.max(...highs4h)) / Math.max(...highs4h) < 0.001).length >= 2 : false;
+  const eqLow     = lows4h.length  >= 3 ? lows4h.filter(l  => Math.abs(l  - Math.min(...lows4h))  / Math.min(...lows4h)  < 0.001).length >= 2 : false;
+
+  // Liquidity Sweep — price grabbed equal high/low then reversed
+  const recentHigh4h = highs4h.length ? Math.max(...highs4h.slice(-3)) : price;
+  const recentLow4h  = lows4h.length  ? Math.min(...lows4h.slice(-3))  : price;
+  const liqSweepBull = price < recentLow4h  * 1.002 && struct4h === 'haussier'; // swept lows → long
+  const liqSweepBear = price > recentHigh4h * 0.998 && struct4h === 'baissier'; // swept highs → short
+
+  // Near PDH/PDL
+  const nearPDH = prevDayHigh ? Math.abs(price - prevDayHigh) / price < 0.003 : false;
+  const nearPDL = prevDayLow  ? Math.abs(price - prevDayLow)  / price < 0.003 : false;
+
+  // Liquidity score bonus
+  const liqBull = (liqSweepBull || nearPDL || eqLow)  && struct4h === 'haussier';
+  const liqBear = (liqSweepBear || nearPDH || eqHigh) && struct4h === 'baissier';
+
   // ── RSI zones ──
   const rsiOversold    = rsi14 && rsi14 < 35;
   const rsiOverbought  = rsi14 && rsi14 > 65;
@@ -1192,6 +1320,10 @@ function computeTechnicals(key){
   if(nearSupport&&trend4h==='haussier'){srScore=25;srDir='haussier';}
   else if(nearResistance&&trend4h==='baissier'){srScore=25;srDir='baissier';}
   else if(nearSupport||nearResistance){srScore=12;srDir=nearSupport?'haussier':'baissier';}
+
+  // Liquidity bonus — zid 5 pts ila liq zone confirmed
+  if(liqBull && srDir==='haussier') srScore = Math.min(25, srScore + 5);
+  if(liqBear && srDir==='baissier') srScore = Math.min(25, srScore + 5);
 
   // EMA (1H alignment + 4H bias)
   if(emaDir==='haussier'&&trend4h==='haussier'){emaScore=25;} 
@@ -1228,6 +1360,13 @@ function computeTechnicals(key){
   else if(bullCount===2&&bearCount<=1) finalDir='haussier_partiel';
   else if(bearCount===2&&bullCount<=1) finalDir='baissier_partiel';
 
+  // Structured SL/TP basé sur S/R réels
+  const isBuyDir  = finalDir==='haussier';
+  const isSellDir = finalDir==='baissier';
+  const structuredLevels = (isBuyDir||isSellDir) && m15.length>=6 && h1.length>=20
+    ? calcStructuredSLTP(h1, m15, h4, price, isBuyDir, dec)
+    : null;
+
   return{
     price, dec,
     // Daily bias
@@ -1245,6 +1384,11 @@ function computeTechnicals(key){
     nearSupport, nearResistance,
     support4h:sr4h.support.toFixed(dec), resistance4h:sr4h.resistance.toFixed(dec),
     recentHigh:sr1h.recentHigh.toFixed(dec), recentLow:sr1h.recentLow.toFixed(dec),
+    // Liquidity zones
+    prevDayHigh:prevDayHigh?.toFixed(dec)||null, prevDayLow:prevDayLow?.toFixed(dec)||null,
+    eqHigh, eqLow, liqSweepBull, liqSweepBear, nearPDH, nearPDL, liqBull, liqBear,
+    // Structured SL/TP
+    structuredLevels,
     // ICT
     bos_bull, bos_bear, fvg_bull, fvg_bear, active,
     // Scores
@@ -1382,6 +1526,12 @@ TON STYLE DE TRADING:
 - RR minimum 1.5 avant d'entrer
 - Tu attends LA bonne setup — pas de trade si doute
 
+RÈGLES SL/TP (STRICTES — JAMAIS D'EXCEPTION):
+- SL: swing high/low 15m le plus proche (structure réelle)
+- TP1: TOUJOURS exactement 2× la distance du SL (RR 1:2)
+- TP2: 3× la distance du SL (RR 1:3)
+- TP3: prochain niveau S/R majeur (RR 1:4 minimum)
+
 ━━━ CONTEXTE MARCHÉ ━━━
 Session: ${session}
 Paire principale: ${best.label} @ ${t.price.toFixed(best.dec)}
@@ -1413,6 +1563,20 @@ BOS haussier 15m: ${t.bos15m_bull} | BOS baissier 15m: ${t.bos15m_bear}
 EMA cross bull: ${t.emaCross15m_bull} | bear: ${t.emaCross15m_bear}
 Zone d'entrée 15m: ${t.sr15mLow} → ${t.sr15mHigh}
 → Question: Y a-t-il un BOS ou EMA cross 15m dans le sens du bias?
+
+━━━ NIVEAUX S/R STRUCTURÉS (calculés sur structure réelle) ━━━
+${t.structuredLevels ? `SL suggéré: ${t.structuredLevels.sl} | TP1 (RR ${t.structuredLevels.tp1RR}): ${t.structuredLevels.tp1} | TP2: ${t.structuredLevels.tp2} | TP3: ${t.structuredLevels.tp3}
+Prochains niveaux S/R: ${t.structuredLevels.nextLevels?.join(' → ')||'N/A'}
+→ Utilise ces niveaux comme base — ajuste si nécessaire selon le contexte` : 'Données insuffisantes — calcule SL/TP sur structure visible'}
+
+━━━ LIQUIDITÉ — ZONES CLÉS ━━━
+Previous Day High (PDH): ${t.prevDayHigh||'N/A'} | Previous Day Low (PDL): ${t.prevDayLow||'N/A'}
+Near PDH: ${t.nearPDH} | Near PDL: ${t.nearPDL}
+Equal Highs 4H: ${t.eqHigh} | Equal Lows 4H: ${t.eqLow}
+Liquidity Sweep haussier (swept lows → long): ${t.liqSweepBull}
+Liquidity Sweep baissier (swept highs → short): ${t.liqSweepBear}
+Zone liquidité confirmée BUY: ${t.liqBull} | SELL: ${t.liqBear}
+→ Question: Le prix a-t-il sweepé une zone de liquidité? PDH/PDL atteint?
 
 ━━━ ICT / SMC ━━━
 BOS haussier 1H: ${t.bos_bull} | BOS baissier 1H: ${t.bos_bear}
@@ -1496,6 +1660,27 @@ Réponds UNIQUEMENT en JSON brut sans markdown:
     let r;
     try{r=JSON.parse(raw);}
     catch{const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error('No JSON');r=JSON.parse(m[0]);}
+
+    // ── Override SL/TP avec niveaux structurés (S/R réels) ──
+    if(t.structuredLevels && r.signal !== 'WAIT' && r.signal !== 'ATTENDRE'){
+      const sl = t.structuredLevels;
+      // Si AI n'a pas donné SL/TP valides → utilise structuredLevels
+      if(!parseFloat(r.sl) || !parseFloat(r.tp1)){
+        r.sl  = sl.sl;
+        r.tp1 = sl.tp1;
+        r.tp2 = sl.tp2;
+        r.tp3 = sl.tp3;
+      } else {
+        // AI a donné des niveaux — vérifie TP1 RR >= 1.5 sinon override
+        const entry  = parseFloat(r.entry || t.price);
+        const aiSL   = parseFloat(r.sl);
+        const aiTP1  = parseFloat(r.tp1);
+        const aiRR   = Math.abs(aiTP1-entry)/Math.abs(aiSL-entry);
+        if(aiRR < 1.5){
+          r.tp1 = sl.tp1; // replace TP1 avec niveau logique
+        }
+      }
+    }
     renderResult(r,best,t);
     analyzeActiveTrade();
     startScanCountdown();
