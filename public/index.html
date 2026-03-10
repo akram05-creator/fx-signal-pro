@@ -493,9 +493,125 @@ const POLY_KEY    = 'Vxe1pa2pDsqR2wt5XguyxYOH68DwTiKi';
 const GROQ_KEY    = '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';
 const GROQ_MODEL  = 'llama-3.3-70b-versatile';
 const SCAN_SECS   = 60;
-const PRICE_SECS  = 60;  // 60s — 4 keys × 1 pair — ghi 8h-21h UTC = 780 req/jour ✅
+const PRICE_SECS  = 60;
 const TD_SYMS     = 'EUR/USD,GBP/USD,XAU/USD,USD/JPY';
 const TD_MAP     = {'EUR/USD':'EURUSD','GBP/USD':'GBPUSD','XAU/USD':'XAUUSD','USD/JPY':'USDJPY'};
+const SB_URL      = 'https://ugbowhydxxkpsamjxxai.supabase.co';
+const SB_KEY      = 'sb_publishable_I1wxgYYVPxo9PXhmBxpG5A_dYR2nsi9';
+
+// ─── Supabase helpers ──────────────────────────────
+async function sbSelect(table, params=''){
+  try{
+    const res = await fetch(`${SB_URL}/rest/v1/${table}?${params}`,{
+      headers:{'apikey':SB_KEY,'Authorization':`Bearer ${SB_KEY}`}
+    });
+    return await res.json();
+  }catch(e){ console.warn('DB select:',e.message); return []; }
+}
+
+async function sbUpdate(table, match, data){
+  try{
+    const params = Object.entries(match).map(([k,v])=>`${k}=eq.${v}`).join('&');
+    await fetch(`${SB_URL}/rest/v1/${table}?${params}`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':`Bearer ${SB_KEY}`},
+      body: JSON.stringify(data)
+    });
+  }catch(e){ console.warn('DB update:',e.message); }
+}
+
+// ─── Sync DB → App ────────────────────────────────
+async function syncFromDB(){
+  try{
+    // 1 — Win rate
+    const wr = await sbSelect('win_rate','id=eq.1');
+    if(wr?.[0]) renderWinRateFromDB(wr[0]);
+
+    // 2 — Active trade
+    const trades = await sbSelect('trades','status=eq.active&order=created_at.desc&limit=1');
+    if(trades?.[0]) renderActiveTradeFromDB(trades[0]);
+    else hideActiveTrade();
+
+    // 3 — Signal history (last 25)
+    const sigs = await sbSelect('signals','order=created_at.desc&limit=25');
+    if(sigs?.length) renderHistoryFromDB(sigs);
+
+  }catch(e){ console.warn('syncFromDB:',e.message); }
+}
+
+function renderWinRateFromDB(wr){
+  // All signals win rate
+  const total = wr.total_wins + wr.total_losses;
+  const pct   = total > 0 ? Math.round((wr.total_wins/total)*100) : 0;
+  const el = document.getElementById('wr-pct');
+  if(el){ el.textContent = total>0 ? pct+'%' : '—'; el.style.color = pct>=55?'var(--green)':pct>=45?'var(--yellow)':'var(--red)'; }
+  const wEl = document.getElementById('wr-wins');   if(wEl) wEl.textContent = wr.total_wins   || 0;
+  const lEl = document.getElementById('wr-losses'); if(lEl) lEl.textContent = wr.total_losses || 0;
+  const tEl = document.getElementById('wr-total');  if(tEl) tEl.textContent = wr.total_signals || 0;
+
+  // My trades win rate
+  const myTotal = wr.user_wins + wr.user_losses;
+  const myPct   = myTotal > 0 ? Math.round((wr.user_wins/myTotal)*100) : 0;
+  const myEl = document.getElementById('my-wr');
+  if(myEl){ myEl.textContent = myTotal>0 ? myPct+'%' : '—'; myEl.style.color = myPct>=55?'var(--green)':myPct>=45?'var(--yellow)':'var(--red)'; }
+  const mwEl = document.getElementById('my-wins');   if(mwEl) mwEl.textContent = wr.user_wins   || 0;
+  const mlEl = document.getElementById('my-losses'); if(mlEl) mlEl.textContent = wr.user_losses || 0;
+  const mtEl = document.getElementById('my-passed'); if(mtEl) mtEl.textContent = wr.user_total  || 0;
+}
+
+function renderActiveTradeFromDB(trade){
+  const monEl = document.getElementById('trade-monitor');
+  if(!monEl) return;
+  monEl.style.display = 'block';
+  const pair  = PAIRS.find(p=>p.label===trade.pair);
+  const dec   = pair?.dec || 5;
+  const price = prices[pair?.key] || parseFloat(trade.entry);
+  const isBuy = trade.signal === 'BUY';
+  const pnl   = isBuy ? ((price-trade.entry)/trade.entry)*100 : ((trade.entry-price)/trade.entry)*100;
+
+  const pnlEl = document.getElementById('tm-pnl');
+  if(pnlEl){ pnlEl.textContent=(pnl>=0?'+':'')+pnl.toFixed(2)+'%'; pnlEl.style.color=pnl>=0?'var(--green)':'var(--red)'; }
+  const pairEl = document.getElementById('tm-pair'); if(pairEl) pairEl.textContent=`${trade.signal} ${trade.pair}`;
+  const entEl  = document.getElementById('tm-entry'); if(entEl) entEl.textContent=parseFloat(trade.entry).toFixed(dec);
+  const slEl   = document.getElementById('tm-sl');   if(slEl)  slEl.textContent=parseFloat(trade.sl).toFixed(dec);
+  const tp1El  = document.getElementById('tm-tp1');  if(tp1El) tp1El.textContent=parseFloat(trade.tp1).toFixed(dec);
+  const tp2El  = document.getElementById('tm-tp2');  if(tp2El) tp2El.textContent=parseFloat(trade.tp2).toFixed(dec);
+
+  // Mark TPs hit
+  if(trade.tp1_hit){ const e=document.getElementById('tm-tp1-hit'); if(e) e.style.display='inline'; }
+  if(trade.tp2_hit){ const e=document.getElementById('tm-tp2-hit'); if(e) e.style.display='inline'; }
+
+  // User entered button — mark trade as user_entered in DB
+  const btnEl = document.getElementById('tm-enter-btn');
+  if(btnEl && !trade.user_entered){
+    btnEl.style.display='inline-block';
+    btnEl.onclick = async ()=>{
+      await sbUpdate('trades',{id:trade.id},{user_entered:true});
+      btnEl.style.display='none';
+      btnEl.textContent='✅ Entré';
+    };
+  }
+}
+
+function hideActiveTrade(){
+  const el = document.getElementById('trade-monitor');
+  if(el) el.style.display='none';
+}
+
+function renderHistoryFromDB(sigs){
+  const el = document.getElementById('hist-list');
+  if(!el) return;
+  el.innerHTML = sigs.map(s=>{
+    const isBuy=s.signal==='BUY', isSell=s.signal==='SELL';
+    const time = new Date(s.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    return `<div class="hi">
+      <span class="hs ${isBuy?'buy':isSell?'sell':'wait'}">${isBuy?'▲ ACH':isSell?'▼ VTE':'⏳ ATT'}</span>
+      <span style="flex:1;color:var(--accent)">${s.pair} @ ${parseFloat(s.entry||0).toFixed(5)}</span>
+      <span style="color:var(--muted)">${s.score||0}/100</span>
+      <span style="color:var(--muted);font-size:9px">${time}</span>
+    </div>`;
+  }).join('');
+}
 const PAIRS = [
   {key:'EURUSD',label:'EUR/USD',tv:'FX:EURUSD',   dec:5, pip:0.0001},
   {key:'GBPUSD',label:'GBP/USD',tv:'FX:GBPUSD',   dec:5, pip:0.0001},
@@ -505,7 +621,7 @@ const PAIRS = [
 
 // ─── State ─────────────────────────────────────────
 let viewKey='EURUSD', viewTF='60';
-const prices={}, history={}, prevClose={};
+const prices={}, history={}, prevClose={}, liveCandle={}, changePct={};
 let scanCd=SCAN_SECS, scanTimer=null;
 let notifOn=false, lastAlertSig='';
 const sigHist=[];
@@ -591,28 +707,25 @@ let calBlocked  = false; // true if high impact event in next 30min or last 15mi
 
 async function fetchCalendar(){
   try{
-    // Forex Factory JSON — via corsproxy
-    const today = new Date().toISOString().split('T')[0];
-    const url   = `https://nfs.faireconomy.media/ff_calendar_thisweek.json`;
-    const res   = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`);
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const data  = await res.json();
+    // Read mn Supabase — Railway ka-yfetch calendar (server-side, mashi browser) ✅
+    const rows = await sbSelect('calendar','order=event_time.asc');
+    if(rows?.length){
+      const todayStr = new Date().toISOString().split('T')[0];
+      calEvents = rows.filter(e => e.event_time?.startsWith(todayStr)).map(e => ({
+        date: e.event_time,
+        currency: e.currency,
+        title: e.title,
+        impact: e.impact
+      }));
+      renderCalendar();
+      console.log(`✅ Calendar DB: ${calEvents.length} events today`);
+      return;
+    }
+  }catch(e){ console.warn('Calendar DB:',e.message); }
 
-    // Filter: today + USD/EUR/GBP/JPY + high/medium impact
-    const todayStr = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-    calEvents = data.filter(e => {
-      const eDate = new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-      return eDate === todayStr && ['USD','EUR','GBP','JPY','XAU'].includes(e.currency);
-    });
-
-    renderCalendar();
-    console.log(`✅ Calendar: ${calEvents.length} events today`);
-  }catch(e){
-    console.warn('Calendar fetch failed:',e.message);
-    // Fallback — mashi bloqué si calendar ma wslach
-    document.getElementById('cal-events').innerHTML =
-      `<span style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);">Calendar indisponible — vérifier manuellement</span>`;
-  }
+  // Fallback — mashi bloqué si calendar ma wslach
+  document.getElementById('cal-events').innerHTML =
+    `<span style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);">Calendar indisponible — vérifier manuellement</span>`;
 }
 
 function renderCalendar(){
@@ -768,7 +881,7 @@ const candles = {}; // candles[key] = { h1: [...], h4: [] }
 // each candle: { o, h, l, c, v }
 
 async function fetchPrices(){
-  // ⛔ Stop fetch outside active hours — économise credits
+  // ⛔ Stop fetch outside active hours
   const utcH = new Date().getUTCHours();
   if(utcH < 8 || utcH >= 21){
     document.getElementById('sstatus').textContent='😴 Marché fermé — reprise à 8h UTC';
@@ -776,25 +889,25 @@ async function fetchPrices(){
     return;
   }
   try{
-    // 4 keys en parallel — 1 pair/key — 60s — ghi 8h-21h ✅
-    const [r1,r2,r3,r4] = await Promise.all([
-      fetch(`https://api.twelvedata.com/price?symbol=EUR%2FUSD&apikey=${TD_KEY}`),
-      fetch(`https://api.twelvedata.com/price?symbol=GBP%2FUSD&apikey=${TD_KEY2}`),
-      fetch(`https://api.twelvedata.com/price?symbol=XAU%2FUSD&apikey=${TD_KEY3}`),
-      fetch(`https://api.twelvedata.com/price?symbol=USD%2FJPY&apikey=${TD_KEY4}`)
-    ]);
-    const [d1,d2,d3,d4] = await Promise.all([r1.json(),r2.json(),r3.json(),r4.json()]);
-    const rawMap = {'EUR/USD':d1,'GBP/USD':d2,'XAU/USD':d3,'USD/JPY':d4};
+    // Read prices mn Supabase — Railway ka-ysavehom kol 60s — 0 Twelve Data req ✅
+    const data = await sbSelect('prices','order=pair.asc');
+    if(!data?.length) return;
 
     let updated=0;
-    for(const [sym,val] of Object.entries(rawMap)){
-      const key = TD_MAP[sym];
-      if(!key) continue;
-      const price = parseFloat(val?.price);
-      if(!price) continue;
+    for(const row of data){
+      const key   = row.pair;
+      const price = parseFloat(row.price);
+      if(!key || !price) continue;
       prices[key]=price; updated++;
 
-      // Mise à jour bougie actuelle live
+      // Change pct mn DB
+      if(row.change_pct !== undefined){
+        const chgEl = document.getElementById('ch-'+key);
+        const pct = parseFloat(row.change_pct||0).toFixed(2);
+        if(chgEl){ chgEl.textContent=(row.change_pct>=0?'+':'')+pct+'%'; chgEl.className='pc-chg '+(row.change_pct>=0?'up':'down'); }
+      }
+
+      // Live candle update
       const now = Date.now();
       const hourStart = Math.floor(now/3600000)*3600000;
       if(!liveCandle[key]||liveCandle[key].candleStart!==hourStart){
@@ -805,22 +918,17 @@ async function fetchPrices(){
         liveCandle[key].c=price;
       }
 
-      const dec=PAIRS.find(p=>p.key===key).dec;
-      const pr=document.getElementById('pr-'+key);if(pr)pr.textContent=price.toFixed(dec);
-      if(prevClose[key]){
-        const chg=price-prevClose[key],pct=((chg/prevClose[key])*100).toFixed(2);
-        const cel=document.getElementById('ch-'+key);
-        if(cel){cel.textContent=(chg>=0?'+':'')+pct+'%';cel.className='pc-chg '+(chg>=0?'up':'down');}
-      }
+      const dec=PAIRS.find(p=>p.key===key)?.dec||5;
+      const pr=document.getElementById('pr-'+key); if(pr) pr.textContent=price.toFixed(dec);
     }
     const vp=PAIRS.find(x=>x.key===viewKey);
-    if(prices[viewKey])document.getElementById('cprice').textContent=prices[viewKey].toFixed(vp.dec);
-    console.log(`✅ Prix: ${updated}/4 — ${new Date().toLocaleTimeString()}`);
+    if(prices[viewKey]) document.getElementById('cprice').textContent=prices[viewKey].toFixed(vp.dec);
+    console.log(`✅ Prix DB: ${updated}/4 — ${new Date().toLocaleTimeString()}`);
     renderPairConfluence(viewKey);
     checkTrades();
     updateTradeMonitor();
   }catch(e){
-    console.error('TD prices:',e.message);
+    console.error('fetchPrices DB:',e.message);
     document.getElementById('sstatus').textContent='⚠️ Prix: '+e.message;
   }
 }
@@ -1849,7 +1957,9 @@ window.addEventListener('load',async()=>{
   buildChart('FX:EURUSD','60');
   await fetchPrices();
   fetchPrevClose();
-  fetchCalendar(); // Economic calendar — news filter
+  fetchCalendar();
+  syncFromDB(); // Load win rate + active trade + history mn Supabase
+  setInterval(syncFromDB, 30*1000); // Refresh kol 30s
   // Fetch real OHLCV candles (1H + 4H) for top-down analysis
   await fetchAllCandles();
   setInterval(fetchPrices, PRICE_SECS*1000);
