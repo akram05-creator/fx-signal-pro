@@ -707,36 +707,25 @@ let calBlocked  = false; // true if high impact event in next 30min or last 15mi
 
 async function fetchCalendar(){
   try{
-    // Try direct first, then proxies
-    const urls = [
-      'https://nfs.faireconomy.media/ff_calendar_thisweek.json',
-      'https://api.allorigins.win/raw?url='+encodeURIComponent('https://nfs.faireconomy.media/ff_calendar_thisweek.json'),
-      'https://corsproxy.io/?'+encodeURIComponent('https://nfs.faireconomy.media/ff_calendar_thisweek.json')
-    ];
-    let data = null;
-    for(const url of urls){
-      try{
-        const res = await fetch(url);
-        if(res.ok){ data = await res.json(); break; }
-      }catch(e){ continue; }
+    // Read mn Supabase — Railway ka-yfetch calendar (server-side, mashi browser) ✅
+    const rows = await sbSelect('calendar','order=event_time.asc');
+    if(rows?.length){
+      const todayStr = new Date().toISOString().split('T')[0];
+      calEvents = rows.filter(e => e.event_time?.startsWith(todayStr)).map(e => ({
+        date: e.event_time,
+        currency: e.currency,
+        title: e.title,
+        impact: e.impact
+      }));
+      renderCalendar();
+      console.log(`✅ Calendar DB: ${calEvents.length} events today`);
+      return;
     }
-    if(!data) throw new Error('All proxies failed');
+  }catch(e){ console.warn('Calendar DB:',e.message); }
 
-    // Filter: today + USD/EUR/GBP/JPY + high/medium impact
-    const todayStr = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-    calEvents = data.filter(e => {
-      const eDate = new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-      return eDate === todayStr && ['USD','EUR','GBP','JPY','XAU'].includes(e.currency);
-    });
-
-    renderCalendar();
-    console.log(`✅ Calendar: ${calEvents.length} events today`);
-  }catch(e){
-    console.warn('Calendar fetch failed:',e.message);
-    // Fallback — mashi bloqué si calendar ma wslach
-    document.getElementById('cal-events').innerHTML =
-      `<span style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);">Calendar indisponible — vérifier manuellement</span>`;
-  }
+  // Fallback — mashi bloqué si calendar ma wslach
+  document.getElementById('cal-events').innerHTML =
+    `<span style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);">Calendar indisponible — vérifier manuellement</span>`;
 }
 
 function renderCalendar(){
