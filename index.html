@@ -621,7 +621,7 @@ const PAIRS = [
 
 // ─── State ─────────────────────────────────────────
 let viewKey='EURUSD', viewTF='60';
-const prices={}, history={}, prevClose={};
+const prices={}, history={}, prevClose={}, liveCandle={}, changePct={};
 let scanCd=SCAN_SECS, scanTimer=null;
 let notifOn=false, lastAlertSig='';
 const sigHist=[];
@@ -1180,7 +1180,7 @@ function computeTechnicals(key){
   const lastCandles = h1.slice(-4);
   const fvg_bull = lastCandles.length>=3 && lastCandles[1].c > lastCandles[0].h && trend4h==='haussier';
   const fvg_bear = lastCandles.length>=3 && lastCandles[1].c < lastCandles[0].l && trend4h==='baissier';
-  const ictDir   = (active&&(bos_bull||fvg_bull)) ? 'haussier'
+  let ictDir   = (active&&(bos_bull||fvg_bull)) ? 'haussier'
                  : (active&&(bos_bear||fvg_bear)) ? 'baissier'
                  : active ? 'neutre' : 'inactif';
 
