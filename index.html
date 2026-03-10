@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FX Signal Pro — AI Powered</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#080c14; --surface:#0d1420; --surface2:#111b2e;
+    --border:#1e2d45; --accent:#00e5ff; --accent2:#7b61ff;
+    --green:#00ff88; --red:#ff3d6e; --yellow:#ffd600;
+    --text:#e8f0ff; --muted:#4a6080;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;}
+  body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+  .container{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:20px;}
+
+  /* Header */
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--border);}
+  .logo{display:flex;align-items:center;gap:12px;}
+  .logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;}
+  .logo h1{font-size:20px;font-weight:800;letter-spacing:-0.5px;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .logo p{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);margin-top:-2px;}
+  .header-right{display:flex;align-items:center;gap:10px;}
+  .ai-badge{display:flex;align-items:center;gap:7px;background:rgba(123,97,255,0.12);border:1px solid rgba(123,97,255,0.3);padding:6px 14px;border-radius:20px;font-family:'Space Mono',monospace;font-size:11px;color:var(--accent2);}
+  .live-badge{display:flex;align-items:center;gap:7px;background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);padding:6px 14px;border-radius:20px;font-family:'Space Mono',monospace;font-size:11px;color:var(--green);}
+  .live-dot{width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 1.5s infinite;}
+  .ai-dot{width:7px;height:7px;background:var(--accent2);border-radius:50%;animation:pulse 1.5s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.4;transform:scale(0.8);}}
+
+  /* Ticker */
+  .ticker-row{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center;}
+  .price-chip{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 14px;display:flex;flex-direction:column;gap:2px;min-width:118px;cursor:pointer;transition:all 0.2s;}
+  .price-chip:hover{border-color:var(--muted);}
+  .price-chip.active{border-color:var(--accent);background:linear-gradient(135deg,rgba(0,229,255,0.08),rgba(123,97,255,0.08));box-shadow:0 0 14px rgba(0,229,255,0.08);}
+  .chip-lbl{font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;}
+  .chip-price{font-family:'Space Mono',monospace;font-size:15px;font-weight:700;color:var(--text);transition:color 0.3s;}
+  .chip-chg{font-family:'Space Mono',monospace;font-size:10px;}
+  .chip-chg.up{color:var(--green);}.chip-chg.down{color:var(--red);}
+  .flash-up{color:var(--green) !important;}.flash-down{color:var(--red) !important;}
+  .upd-time{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);margin-left:auto;align-self:center;}
+
+  /* Stats */
+  .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;text-align:center;}
+  .stat-val{font-family:'Space Mono',monospace;font-size:20px;font-weight:700;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .stat-lbl{font-size:10px;color:var(--muted);margin-top:3px;font-family:'Space Mono',monospace;}
+
+  /* Main grid */
+  .main-grid{display:grid;grid-template-columns:1fr 360px;gap:16px;}
+
+  /* Chart */
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;}
+  .chart-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0;}
+  .chart-pair-name{font-weight:800;font-size:16px;display:flex;align-items:center;gap:10px;}
+  .chart-live-p{font-family:'Space Mono',monospace;font-size:13px;color:var(--accent);font-weight:700;}
+  .tf-tabs{display:flex;gap:5px;}
+  .tf-btn{padding:5px 11px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;transition:all 0.2s;}
+  .tf-btn:hover{color:var(--text);border-color:var(--muted);}
+  .tf-btn.active{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:700;}
+  #tv-container{width:100%;height:460px;}
+
+  /* Right panel */
+  .right-panel{display:flex;flex-direction:column;gap:14px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;}
+  .card-title{font-size:10px;font-family:'Space Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+
+  /* Signal */
+  .sig-display{text-align:center;padding:6px 0;}
+  .sig-badge{display:inline-flex;align-items:center;gap:10px;padding:12px 28px;border-radius:12px;font-size:26px;font-weight:800;letter-spacing:1px;margin-bottom:10px;transition:all 0.4s;}
+  .sig-badge.buy{background:rgba(0,255,136,0.1);border:2px solid var(--green);color:var(--green);box-shadow:0 0 28px rgba(0,255,136,0.15);}
+  .sig-badge.sell{background:rgba(255,61,110,0.1);border:2px solid var(--red);color:var(--red);box-shadow:0 0 28px rgba(255,61,110,0.15);}
+  .sig-badge.wait{background:rgba(255,214,0,0.08);border:2px solid var(--yellow);color:var(--yellow);}
+  .sig-badge.neutral{background:rgba(74,96,128,0.15);border:2px solid var(--border);color:var(--muted);}
+  .conf-wrap{margin-top:6px;}
+  .conf-labels{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:5px;}
+  .conf-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden;}
+  .conf-fill{height:100%;border-radius:3px;transition:width 0.6s ease;background:linear-gradient(90deg,var(--accent2),var(--accent));}
+
+  /* Live price box */
+  .live-price-box{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--accent);border-radius:8px;padding:9px 12px;margin-bottom:4px;}
+  .live-price-val{font-family:'Space Mono',monospace;font-size:17px;font-weight:700;color:var(--accent);flex:1;}
+
+  /* AI Analysis box */
+  .ai-analysis-box{background:var(--surface2);border:1px solid rgba(123,97,255,0.3);border-radius:10px;padding:12px;font-size:12px;line-height:1.6;color:var(--text);min-height:60px;}
+  .ai-thinking{display:flex;align-items:center;gap:8px;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;}
+  .thinking-dots span{animation:blink 1.2s infinite;}
+  .thinking-dots span:nth-child(2){animation-delay:0.2s;}
+  .thinking-dots span:nth-child(3){animation-delay:0.4s;}
+  @keyframes blink{0%,80%,100%{opacity:0;}40%{opacity:1;}}
+
+  /* Next analysis countdown */
+  .countdown-bar-wrap{margin-top:10px;}
+  .countdown-lbl{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:4px;}
+  .countdown-bar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+  .countdown-fill{height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:2px;transition:width 1s linear;}
+
+  /* Levels */
+  .levels-grid{display:flex;flex-direction:column;gap:8px;}
+  .level-row{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);}
+  .lbl-entry{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--accent);}
+  .lbl-tp{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--green);}
+  .lbl-sl{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--red);}
+  .lbl-rr{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--yellow);}
+  .level-val{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--text);}
+
+  /* Pair tabs */
+  .pair-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .pair-tab{padding:8px 20px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;transition:all 0.2s;letter-spacing:0.5px;}
+  .pair-tab:hover{border-color:var(--accent);color:var(--accent);}
+  .pair-tab.active{background:linear-gradient(135deg,rgba(0,229,255,0.15),rgba(123,97,255,0.15));border-color:var(--accent);color:var(--accent);box-shadow:0 0 16px rgba(0,229,255,0.1);}
+
+  /* Conditions */
+  .cond-list{display:flex;flex-direction:column;gap:7px;}
+  .cond-item{display:flex;align-items:flex-start;gap:9px;padding:8px 11px;background:var(--surface2);border-radius:7px;font-size:11px;border:1px solid transparent;transition:all 0.3s;line-height:1.4;}
+  .cond-item.met{border-color:rgba(0,255,136,0.2);background:rgba(0,255,136,0.04);}
+  .cond-item.unmet{border-color:rgba(255,61,110,0.15);background:rgba(255,61,110,0.03);}
+  .cond-item.info{border-color:rgba(123,97,255,0.2);background:rgba(123,97,255,0.04);}
+  .cond-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:3px;}
+  .cond-dot.met{background:var(--green);box-shadow:0 0 5px var(--green);}
+  .cond-dot.unmet{background:var(--red);}
+  .cond-dot.info{background:var(--accent2);}
+  .cond-dot.neutral{background:var(--muted);}
+
+  @media(max-width:900px){.main-grid{grid-template-columns:1fr;}#tv-container{height:320px;}.stats-row{grid-template-columns:repeat(2,1fr);}}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div>
+        <h1>FX SIGNAL PRO</h1>
+        <p>AI-Powered · Real-Time Analysis</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="ai-badge"><div class="ai-dot"></div>CLAUDE AI</div>
+      <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    </div>
+  </header>
+
+  <!-- API Keys bar -->
+  <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;flex-wrap:wrap;">
+    <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);white-space:nowrap;">🔑 ANTHROPIC KEY</span>
+    <input id="anthropic-key" type="password" placeholder="sk-ant-..." 
+      style="flex:1;min-width:200px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;"
+      oninput="this.style.borderColor=this.value?'var(--green)':'var(--border)'">
+    <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);white-space:nowrap;">ℹ️ <a href="https://console.anthropic.com/keys" target="_blank" style="color:var(--accent);text-decoration:none;">console.anthropic.com/keys</a></span>
+  </div>
+
+  <!-- Live Price Ticker -->
+  <div class="ticker-row">
+    <div class="price-chip active" id="chip-EURUSD" onclick="selectPair('EURUSD')">
+      <span class="chip-lbl">EUR/USD</span>
+      <span class="chip-price" id="cp-EURUSD">—</span>
+      <span class="chip-chg" id="cc-EURUSD">—</span>
+    </div>
+    <div class="price-chip" id="chip-GBPUSD" onclick="selectPair('GBPUSD')">
+      <span class="chip-lbl">GBP/USD</span>
+      <span class="chip-price" id="cp-GBPUSD">—</span>
+      <span class="chip-chg" id="cc-GBPUSD">—</span>
+    </div>
+    <div class="price-chip" id="chip-XAUUSD" onclick="selectPair('XAUUSD')">
+      <span class="chip-lbl">XAU/USD</span>
+      <span class="chip-price" id="cp-XAUUSD">—</span>
+      <span class="chip-chg" id="cc-XAUUSD">—</span>
+    </div>
+    <div class="price-chip" id="chip-USDJPY" onclick="selectPair('USDJPY')">
+      <span class="chip-lbl">USD/JPY</span>
+      <span class="chip-price" id="cp-USDJPY">—</span>
+      <span class="chip-chg" id="cc-USDJPY">—</span>
+    </div>
+    <span class="upd-time" id="upd-time">Fetching prices...</span>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-val" id="stat-sig">0</div><div class="stat-lbl">SIGNALS TODAY</div></div>
+    <div class="stat-card"><div class="stat-val" id="stat-buy">0</div><div class="stat-lbl">BUY SIGNALS</div></div>
+    <div class="stat-card"><div class="stat-val" id="stat-sell">0</div><div class="stat-lbl">SELL SIGNALS</div></div>
+    <div class="stat-card"><div class="stat-val" id="stat-next">30s</div><div class="stat-lbl">NEXT ANALYSIS</div></div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+
+    <!-- Chart -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-pair-name">
+          <span id="chart-lbl">EUR/USD</span>
+          <span class="chart-live-p" id="chart-p">—</span>
+        </div>
+        <div class="tf-tabs">
+          <button class="tf-btn" onclick="setTF('1',this)">1m</button>
+          <button class="tf-btn" onclick="setTF('5',this)">5m</button>
+          <button class="tf-btn" onclick="setTF('15',this)">15m</button>
+          <button class="tf-btn active" onclick="setTF('60',this)">1H</button>
+          <button class="tf-btn" onclick="setTF('240',this)">4H</button>
+          <button class="tf-btn" onclick="setTF('D',this)">D</button>
+        </div>
+      </div>
+      <div id="tv-container">
+        <div id="tv-loading" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-family:'Space Mono',monospace;font-size:12px;gap:8px;">
+          <div class="live-dot"></div>Loading chart...
+        </div>
+      </div>
+    </div>
+
+    <!-- Right panel -->
+    <div class="right-panel">
+
+      <!-- Live Price -->
+      <div class="card">
+        <div class="card-title">📡 LIVE PRICE</div>
+        <div class="live-price-box">
+          <div class="live-dot"></div>
+          <span class="live-price-val" id="live-val">Fetching...</span>
+          <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);" id="live-pair-lbl">EUR/USD</span>
+        </div>
+      </div>
+
+      <!-- AI Signal -->
+      <div class="card">
+        <div class="card-title"><div class="ai-dot"></div>AI SIGNAL</div>
+        <div class="sig-display">
+          <div class="sig-badge neutral" id="sig-badge">
+            <span id="sig-icon">◌</span>
+            <span id="sig-text">ANALYZING...</span>
+          </div>
+          <div class="conf-wrap">
+            <div class="conf-labels"><span>CONFIDENCE</span><span id="conf-pct">—</span></div>
+            <div class="conf-bar"><div class="conf-fill" id="conf-fill" style="width:0%"></div></div>
+          </div>
+        </div>
+        <!-- Countdown -->
+        <div class="countdown-bar-wrap">
+          <div class="countdown-lbl">
+            <span>NEXT ANALYSIS</span>
+            <span id="countdown-txt">60s</span>
+          </div>
+          <div class="countdown-bar">
+            <div class="countdown-fill" id="countdown-fill" style="width:100%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trade Levels -->
+      <div class="card">
+        <div class="card-title">🎯 TRADE LEVELS</div>
+        <div class="levels-grid">
+          <div class="level-row"><span class="lbl-entry">ENTRY</span><span class="level-val" id="lvl-entry">—</span></div>
+          <div class="level-row"><span class="lbl-tp">TP 1</span><span class="level-val" id="lvl-tp1">—</span></div>
+          <div class="level-row"><span class="lbl-tp">TP 2</span><span class="level-val" id="lvl-tp2">—</span></div>
+          <div class="level-row"><span class="lbl-sl">STOP LOSS</span><span class="level-val" id="lvl-sl">—</span></div>
+          <div class="level-row"><span class="lbl-rr">RISK/REWARD</span><span class="level-val" id="lvl-rr">—</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- AI Reasoning -->
+  <div style="margin-top:16px;">
+    <div class="card">
+      <div class="card-title"><div class="ai-dot"></div>AI REASONING</div>
+      <div class="ai-analysis-box" id="ai-reasoning">
+        <div class="ai-thinking">
+          <div class="ai-dot"></div>
+          Waiting for price data...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Conditions -->
+  <div style="margin-top:16px;">
+    <div class="card">
+      <div class="card-title">✅ CONDITIONS CHECKLIST</div>
+      <div class="cond-list" id="cond-list">
+        <div class="cond-item">
+          <div class="cond-dot neutral"></div>
+          <span>AI ka-y7lel market kol daqiqa automatiquement...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+<script>
+// ── Config ──────────────────────────────────────────
+const RAPIDAPI_KEY  = '19e6f3f393msh125a63ba3096e7bp179cdcjsn38bd5d745b1c';
+const RAPIDAPI_HOST = 'yahoo-finance-real-time1.p.rapidapi.com';
+const CLAUDE_MODEL  = 'claude-sonnet-4-20250514';
+const ANALYSIS_INTERVAL = 30; // seconds
+
+// ── State ───────────────────────────────────────────
+let currentPair = 'EURUSD';
+let currentTF   = '60';
+let tvWidget    = null;
+let countdown   = ANALYSIS_INTERVAL;
+let countdownTimer = null;
+let sigBuyCount = 0, sigSellCount = 0, sigTotalCount = 0;
+
+const livePrices  = {};
+const priceHistory = { EURUSD:[], GBPUSD:[], XAUUSD:[], USDJPY:[] };
+const DEC  = { EURUSD:5, GBPUSD:5, XAUUSD:2, USDJPY:3 };
+const LBL  = { EURUSD:'EUR/USD', GBPUSD:'GBP/USD', XAUUSD:'XAU/USD', USDJPY:'USD/JPY' };
+const YF_SYMBOLS = { EURUSD:'EURUSD=X', GBPUSD:'GBPUSD=X', XAUUSD:'GC=F', USDJPY:'JPY=X' };
+
+// ── TradingView ─────────────────────────────────────
+function buildChart(sym, tf) {
+  if (typeof TradingView === 'undefined') {
+    waitForTV(() => buildChart(sym, tf)); return;
+  }
+  const wrap = document.getElementById('tv-container');
+  wrap.innerHTML = '';
+  const inner = document.createElement('div');
+  inner.id = 'tvchart';
+  inner.style.cssText = 'width:100%;height:100%;';
+  wrap.appendChild(inner);
+  tvWidget = new TradingView.widget({
+    autosize:true, symbol:sym, interval:tf,
+    timezone:'Africa/Casablanca', theme:'dark', style:'1', locale:'en',
+    toolbar_bg:'#0d1420', enable_publishing:false, hide_side_toolbar:false,
+    allow_symbol_change:false, container_id:'tvchart', backgroundColor:'#080c14',
+    studies:['MASimple@tv-basicstudies','RSI@tv-basicstudies','MACD@tv-basicstudies'],
+    overrides:{
+      'paneProperties.background':'#080c14',
+      'paneProperties.vertGridProperties.color':'rgba(30,45,69,0.3)',
+      'paneProperties.horzGridProperties.color':'rgba(30,45,69,0.3)',
+      'candleStyle.upColor':'#00ff88','candleStyle.downColor':'#ff3d6e',
+      'candleStyle.borderUpColor':'#00ff88','candleStyle.borderDownColor':'#ff3d6e',
+      'candleStyle.wickUpColor':'#00ff88','candleStyle.wickDownColor':'#ff3d6e',
+    }
+  });
+}
+
+function waitForTV(cb, n=0) {
+  if (typeof TradingView !== 'undefined') cb();
+  else if (n < 50) setTimeout(() => waitForTV(cb, n+1), 200);
+  else document.getElementById('tv-container').innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-family:Space Mono,monospace;font-size:12px;">⚠️ Chart unavailable</div>';
+}
+
+// ── Pair / TF ───────────────────────────────────────
+function selectPair(pair) {
+  currentPair = pair;
+  document.querySelectorAll('.price-chip').forEach(c => c.classList.remove('active'));
+  document.getElementById('chip-' + pair).classList.add('active');
+  document.getElementById('chart-lbl').textContent = LBL[pair];
+  document.getElementById('live-pair-lbl').textContent = LBL[pair];
+  buildChart(pair, currentTF);
+  syncPrice();
+  fetchPrices(); // fetch new pair immediately
+  countdown = 5; // trigger AI soon
+}
+
+function setTF(tf, btn) {
+  currentTF = tf;
+  document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  buildChart(currentPair, tf);
+}
+
+// ── Price sync ──────────────────────────────────────
+function syncPrice() {
+  const p = livePrices[currentPair];
+  const dec = DEC[currentPair];
+  const txt = p ? p.toFixed(dec) : '—';
+  document.getElementById('live-val').textContent = txt;
+  document.getElementById('chart-p').textContent  = txt;
+}
+
+// ── Fetch prices (RapidAPI) ─────────────────────────
+async function fetchOnePair(pair) {
+  const sym = YF_SYMBOLS[pair];
+  const url = `https://yahoo-finance-real-time1.p.rapidapi.com/stock/get-options?symbol=${sym}&lang=en-US&region=US`;
+  const res = await fetch(url, {
+    headers: { 'x-rapidapi-key': RAPIDAPI_KEY, 'x-rapidapi-host': RAPIDAPI_HOST }
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data  = await res.json();
+  const quote = data?.optionChain?.result?.[0]?.quote;
+  if (!quote) throw new Error('No quote');
+  return { price: quote.regularMarketPrice, prevClose: quote.regularMarketPreviousClose };
+}
+
+async function fetchPrices() {
+  // Fetch ONLY current pair to avoid rate limiting (free tier = limited requests)
+  const pair = currentPair;
+  try {
+    const { price, prevClose } = await fetchOnePair(pair);
+    const dec = DEC[pair];
+    const el  = document.getElementById('cp-' + pair);
+
+    // Flash
+    if (livePrices[pair] !== undefined && livePrices[pair] !== price) {
+      const cls = price > livePrices[pair] ? 'flash-up' : 'flash-down';
+      el.classList.add(cls);
+      setTimeout(() => el.classList.remove(cls), 600);
+    }
+
+    // Store price history
+    priceHistory[pair].push(price);
+    if (priceHistory[pair].length > 10) priceHistory[pair].shift();
+
+    livePrices[pair] = price;
+    el.textContent = price.toFixed(dec);
+
+    if (prevClose) {
+      const chg = price - prevClose;
+      const pct = ((chg / prevClose) * 100).toFixed(2);
+      const chgEl = document.getElementById('cc-' + pair);
+      chgEl.textContent = (chg >= 0 ? '+' : '') + pct + '%';
+      chgEl.className = 'chip-chg ' + (chg >= 0 ? 'up' : 'down');
+    }
+
+    syncPrice();
+
+    const now = new Date();
+    document.getElementById('upd-time').textContent =
+      'Updated ' + now.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+  } catch(e) {
+    console.warn('Fetch failed:', pair, e.message);
+    document.getElementById('upd-time').textContent = '⚠️ Price API error — ' + e.message;
+  }
+}
+
+// ── Countdown timer ─────────────────────────────────
+function startCountdown() {
+  countdown = ANALYSIS_INTERVAL;
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    countdown--;
+    const pct = (countdown / ANALYSIS_INTERVAL) * 100;
+    document.getElementById('countdown-fill').style.width = pct + '%';
+    document.getElementById('countdown-txt').textContent = countdown + 's';
+    document.getElementById('stat-next').textContent = countdown + 's';
+    if (countdown <= 0) {
+      clearInterval(countdownTimer);
+      runAIAnalysis();
+    }
+  }, 1000);
+}
+
+// ── Claude AI Analysis ──────────────────────────────
+async function runAIAnalysis() {
+  const price = livePrices[currentPair];
+  if (!price) {
+    document.getElementById('ai-reasoning').innerHTML =
+      '<div class="ai-thinking"><div class="ai-dot"></div>Waiting for price data...</div>';
+    startCountdown();
+    return;
+  }
+
+  const dec     = DEC[currentPair];
+  const pairLbl = LBL[currentPair];
+  const hist    = priceHistory[currentPair];
+  const prevClose = hist.length > 1 ? hist[0] : price;
+  const change  = price - prevClose;
+  const changePct = ((change / prevClose) * 100).toFixed(3);
+
+  // Momentum from history
+  let momentum = 'neutral';
+  if (hist.length >= 3) {
+    const recent = hist.slice(-3);
+    if (recent[2] > recent[1] && recent[1] > recent[0]) momentum = 'bullish';
+    else if (recent[2] < recent[1] && recent[1] < recent[0]) momentum = 'bearish';
+  }
+
+  // Current session
+  const hour = new Date().getUTCHours();
+  let session = 'Asian';
+  if (hour >= 7 && hour < 12) session = 'London';
+  else if (hour >= 12 && hour < 17) session = 'New York';
+  else if (hour >= 12 && hour < 21) session = 'London/NY Overlap';
+
+  // Show thinking state
+  document.getElementById('ai-reasoning').innerHTML = `
+    <div class="ai-thinking">
+      <div class="ai-dot"></div>
+      AI ka-y7lel ${pairLbl}...
+      <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+    </div>`;
+
+  const pip = currentPair==='XAUUSD' ? 3 : currentPair==='USDJPY' ? 0.15 : 0.0015;
+  const exBuy  = { sl: (price - pip).toFixed(dec), tp1: (price + pip).toFixed(dec), tp2: (price + pip*2).toFixed(dec) };
+  const exSell = { sl: (price + pip).toFixed(dec), tp1: (price - pip).toFixed(dec), tp2: (price - pip*2).toFixed(dec) };
+
+  const prompt = `You are an aggressive professional forex scalper. Analyze this market data and return a JSON signal.
+
+PAIR: ${pairLbl}
+CURRENT PRICE: ${price.toFixed(dec)}
+PRICE CHANGE: ${change >= 0 ? '+' : ''}${changePct}%
+MOMENTUM: ${momentum}
+SESSION: ${session}
+PRICE HISTORY (oldest to newest): ${hist.map(p => p.toFixed(dec)).join(', ')}
+
+RULES:
+- bullish momentum or rising prices = BUY
+- bearish momentum or falling prices = SELL
+- WAIT only if completely flat
+- confidence always 60-90
+
+Return ONLY raw JSON, no markdown, no explanation, no backticks:
+{"signal":"BUY","confidence":75,"support":${(price - pip*2).toFixed(dec)},"resistance":${(price + pip*2).toFixed(dec)},"entry":${price.toFixed(dec)},"sl":${exBuy.sl},"tp1":${exBuy.tp1},"tp2":${exBuy.tp2},"reasoning":"Replace with your actual analysis in 2 sentences.","conditions":[{"text":"Short-term momentum direction","met":true},{"text":"Active high-volume session","met":true},{"text":"Price at key level","met":false},{"text":"Risk/Reward above 1:1","met":true}]}`;
+
+  try {
+    const anthropicKey = document.getElementById('anthropic-key')?.value?.trim();
+    if (!anthropicKey) {
+      document.getElementById('ai-reasoning').innerHTML =
+        `<div style="color:var(--yellow);font-size:11px;">⚠️ Dkhol Anthropic API Key fo9 bach ybda AI analysis</div>`;
+      startCountdown(); return;
+    }
+
+    const res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, anthropicKey })
+    });
+
+    const data = await res.json();
+    const raw  = data.content?.[0]?.text || '';
+
+    // Log for debugging
+    console.log('AI raw response:', raw);
+
+    // More robust JSON extraction
+    let result;
+    try {
+      // Try direct parse first
+      result = JSON.parse(raw);
+    } catch(e1) {
+      // Try to extract JSON block
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error('Raw response was:', raw);
+        throw new Error('No JSON found. Response: ' + raw.substring(0, 100));
+      }
+      try {
+        result = JSON.parse(jsonMatch[0]);
+      } catch(e2) {
+        throw new Error('JSON parse error: ' + e2.message);
+      }
+    }
+
+    updateSignalUI(result, price);
+    startCountdown();
+
+  } catch(e) {
+    console.error('AI analysis failed:', e);
+    document.getElementById('ai-reasoning').innerHTML =
+      `<div style="color:var(--red);font-size:11px;">⚠️ AI analysis failed: ${e.message}</div>`;
+    startCountdown();
+  }
+}
+
+// ── Update UI from AI result ────────────────────────
+function updateSignalUI(result, price) {
+  const dec = DEC[currentPair];
+  const sig = result.signal?.toUpperCase() || 'WAIT';
+  const conf = result.confidence || 0;
+
+  // Signal badge
+  const scMap = { BUY:'buy', SELL:'sell', WAIT:'wait' };
+  const icMap = { BUY:'▲', SELL:'▼', WAIT:'⏳' };
+  document.getElementById('sig-badge').className = 'sig-badge ' + (scMap[sig] || 'neutral');
+  document.getElementById('sig-icon').textContent = icMap[sig] || '◌';
+  document.getElementById('sig-text').textContent = sig;
+  document.getElementById('conf-pct').textContent = conf + '%';
+  document.getElementById('conf-fill').style.width = conf + '%';
+
+  // Stats
+  if (sig === 'BUY')  { sigBuyCount++;  sigTotalCount++; }
+  if (sig === 'SELL') { sigSellCount++; sigTotalCount++; }
+  document.getElementById('stat-sig').textContent  = sigTotalCount;
+  document.getElementById('stat-buy').textContent  = sigBuyCount;
+  document.getElementById('stat-sell').textContent = sigSellCount;
+
+  // Levels
+  const fmt = v => v ? parseFloat(v).toFixed(dec) : '—';
+  document.getElementById('lvl-entry').textContent = fmt(result.entry || price);
+  document.getElementById('lvl-tp1').textContent   = fmt(result.tp1);
+  document.getElementById('lvl-tp2').textContent   = fmt(result.tp2);
+  document.getElementById('lvl-sl').textContent    = fmt(result.sl);
+
+  if (result.tp2 && result.sl && result.entry) {
+    const entry = parseFloat(result.entry || price);
+    const sl    = parseFloat(result.sl);
+    const tp2   = parseFloat(result.tp2);
+    const rr = sig === 'BUY'
+      ? ((tp2 - entry) / (entry - sl)).toFixed(1)
+      : ((entry - tp2) / (sl - entry)).toFixed(1);
+    document.getElementById('lvl-rr').textContent = '1:' + rr;
+  }
+
+  // AI Reasoning
+  document.getElementById('ai-reasoning').textContent = result.reasoning || '—';
+
+  // Conditions
+  if (result.conditions?.length) {
+    document.getElementById('cond-list').innerHTML = result.conditions.map(c => `
+      <div class="cond-item ${c.met ? 'met' : 'unmet'}">
+        <div class="cond-dot ${c.met ? 'met' : 'unmet'}"></div>
+        <span>${c.text}</span>
+      </div>`).join('');
+  }
+}
+
+// ── Init ────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  waitForTV(() => buildChart('EURUSD', '60'));
+
+  // Fetch prices first, then start AI
+  await fetchPrices();
+  setInterval(fetchPrices, 60000); // prices every 60s (avoid 429)
+
+  // Start first analysis after 3 seconds
+  setTimeout(() => {
+    runAIAnalysis();
+  }, 3000);
+});
+</script>
+</body>
+</html>

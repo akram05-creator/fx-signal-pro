@@ -1,0 +1,7 @@
+{
+  "name": "fx-signal-pro",
+  "version": "1.0.0",
+  "description": "FX Signal Pro — Multi-Strategy Forex Scanner",
+  "private": true,
+  "engines": { "node": ">=18" }
+}
