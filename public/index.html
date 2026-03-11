@@ -1329,22 +1329,19 @@ ICT: ${t.ictScore}/25 (${t.ictDir})
 Score total: ${t.totalScore}/100
 
 ━━━ TA DÉCISION DE TRADER ━━━
-Analyse chaque timeframe comme un vrai trader:
+Tu es le SEUL décideur — pas de règle mécanique. Analyse comme un vrai trader:
 1. Daily/4H: Quel est le bias? Où est le prix par rapport aux niveaux clés?
 2. 1H: La structure confirme-t-elle le bias? Les EMAs sont-elles alignées?
 3. 15m: Y a-t-il un trigger d'entrée (BOS, EMA cross, pullback sur zone)?
 4. News: Y a-t-il un risque événementiel?
 5. Décision finale: ACHETER / VENDRE / ATTENDRE — et POURQUOI
 
-CRITÈRES MINIMUM pour entrer (comme un vrai trader):
-- Bias Daily/4H clair (pas neutre)
-- 1H confirme (EMAs + structure)
-- Trigger 15m présent (BOS ou EMA cross)
-- Session active (Londres ou New York)
-- Pas de news HIGH IMPACT dans 30min
-- RR minimum 1.5
-
-Si UN de ces critères manque → ATTENDRE sans exception.
+TON JUGEMENT DE TRADER:
+- Tu peux entrer même avec 2 stratégies alignées SI le contexte est clair
+- Tu peux entrer même avec score < 65 SI tu vois une setup évidente sur le chart
+- Tu peux refuser un signal même avec score 90 SI le contexte ne te convient pas
+- La clé: setup claire + SL logique + RR minimum 1.5
+- ATTENDRE seulement si: vraiment aucune setup visible, marché en range total, ou news imminent
 
 Pour le SL: utilise le swing high/low 15m le plus proche (pas une formule fixe).
 Pour les TPs: basés sur résistances/supports réels identifiés dans l'analyse.
@@ -1415,14 +1412,9 @@ function renderResult(r,best,t){
   const isBuy=sig.includes('ACH')||sig==='BUY';
   const isSell=sig.includes('VEND')||sig==='SELL';
 
-  // ── Hard gate — mashi trust AI blindly ──
-  const bullCount3=[t.srDir,t.emaDir,t.rsiDir,t.ictDir].filter(d=>d==='haussier').length;
-  const bearCount3=[t.srDir,t.emaDir,t.rsiDir,t.ictDir].filter(d=>d==='baissier').length;
-  const confluenceOk = (isBuy&&bullCount3>=3)||(isSell&&bearCount3>=3);
-  const scoreOk = t.totalScore >= 65;
-  const signalValid = (isBuy||isSell) && confluenceOk && scoreOk;
-
-  const isWait = !signalValid;
+  // ── AI est le seul décideur — pas de hard gate ──
+  // L'AI a déjà tout le contexte (scores, structure, session, news) → on fait confiance
+  const isWait = !(isBuy || isSell) || sig.includes('ATT') || sig === 'WAIT';
   const sigKey=isBuy?'BUY':isSell?'SELL':'WAIT';
   const conf=Math.min(95,Math.max(0,r.confidence||0));
   const fmt=v=>v&&parseFloat(v)>0?parseFloat(v).toFixed(dec):'—';
@@ -1494,8 +1486,8 @@ function renderResult(r,best,t){
   // Scan status
   document.getElementById('sdot').style.background=isWait?'var(--yellow)':'var(--green)';
   document.getElementById('sstatus').textContent=isWait
-    ?`✋ Score ${t.totalScore}/100 — Confluence insuffisante (min. 65 requis)`
-    :`✅ ${best.label} — ${isBuy?'ACHETER':'VENDRE'} | Score ${t.totalScore}/100 | Conf. ${conf}%`;
+    ?`🧠 AI: Pas de setup — Score ${t.totalScore}/100 | Conf. ${conf}%`
+    :`✅ ${best.label} — ${isBuy?'ACHETER':'VENDRE'} | Score ${t.totalScore}/100 | Conf. ${conf}% | 🧠 AI validé`;
 
   // Register trade for win rate tracking
   if(!isWait&&r.entry&&r.tp1&&r.tp2&&r.tp3&&r.sl){
